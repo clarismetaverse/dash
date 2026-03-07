@@ -23,10 +23,6 @@ const XANO_SEARCH_ENDPOINT =
   process.env.REACT_APP_XANO_INFLUENCER_SEARCH_ENDPOINT ||
   'https://xbut-eryu-hhsg.f2.xano.io/workspace/1-0/api/32/query/1812';
 
-const VIC_AUTH_TOKEN =
-  process.env.REACT_APP_VIC_AUTH_TOKEN ||
-  'eyJhbGciOiJBMjU2S1ciLCJlbmMiOiJBMjU2Q0JDLUhTNTEyIiwiemlwIjoiREVGIn0.Emw8jRfiVQu2NeyztJmzltPxi2OYNZEO_yzd6wmylnfCGL4nP49xleyo8hdudnlVYzG-j1mQXluAo7cMa5bLCxJcdwoZIup5.zpLAka13aA4FYioz0Hfezw.LUVA0iCOcg6CWALVh1bRSlkssfttnK9Vp-AT7fv1V7zpP-5WoqA6Bj5OFpDTuxsrsbi6ZeXvK2gs0Lh-YIkj2wYAPwRqmTxv-SDZUKv4rhn7yuRd0bTKSeaRef-O6LIMPtBpvNDa7U6D3EpjrDtADQ.NBp5rEDoc6R2PvPrSik6buXy-Om2rvF1eLe0PnXqXbI';
-
 function normalizeCreator(creator: XanoCreator): Creator {
   const name = creator.full_name || creator.name || creator.username || 'Unknown creator';
   const username = creator.username || creator.handle || '';
@@ -40,7 +36,13 @@ function normalizeCreator(creator: XanoCreator): Creator {
   };
 }
 
-export default function InfluencerDiscoveryPage() {
+export default function InfluencerDiscoveryPage({
+  authToken,
+  onSignOut
+}: {
+  authToken: string;
+  onSignOut: () => void;
+}) {
   const countries = [
     { code: '', name: 'All countries', flag: '🌍' },
     { code: 'US', name: 'United States', flag: '🇺🇸' },
@@ -55,6 +57,7 @@ export default function InfluencerDiscoveryPage() {
   const [search, setSearch] = useState('');
   const [country, setCountry] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const trimmedSearch = useMemo(() => search.trim(), [search]);
 
@@ -63,12 +66,13 @@ export default function InfluencerDiscoveryPage() {
 
     async function fetchCreators() {
       setLoading(true);
+      setError('');
       try {
         const res = await fetch(XANO_SEARCH_ENDPOINT, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${VIC_AUTH_TOKEN}`
+            Authorization: `Bearer ${authToken}`
           },
           body: JSON.stringify({
             q: trimmedSearch,
@@ -79,6 +83,9 @@ export default function InfluencerDiscoveryPage() {
         });
 
         if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            throw new Error('Your token is invalid or expired. Please sign in again.');
+          }
           throw new Error('Failed to fetch creators');
         }
 
@@ -87,7 +94,8 @@ export default function InfluencerDiscoveryPage() {
         setCreators(creatorsList.map((creator) => normalizeCreator(creator)));
       } catch (err) {
         if ((err as Error).name !== 'AbortError') {
-          console.error(err);
+          const message = (err as Error).message || 'Unable to load creators right now.';
+          setError(message);
           setCreators([]);
         }
       } finally {
@@ -102,7 +110,7 @@ export default function InfluencerDiscoveryPage() {
     return () => {
       controller.abort();
     };
-  }, [trimmedSearch, country]);
+  }, [trimmedSearch, country, authToken]);
 
   return (
     <div className="min-h-screen bg-neutral-50 p-6 md:p-10">
@@ -114,26 +122,37 @@ export default function InfluencerDiscoveryPage() {
             <p className="mt-1 text-sm text-neutral-500">Search creators by name, username and nationality.</p>
           </div>
 
-          <div className="grid w-full gap-3 md:w-auto md:grid-cols-[1.2fr_220px]">
-            <input
-              placeholder="Search name or @username"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-11 rounded-2xl border border-neutral-200 bg-white px-4 text-sm outline-none ring-0 placeholder:text-neutral-400 focus:border-neutral-900"
-            />
-            <select
-              value={country}
-              onChange={(e) => setCountry(e.target.value)}
-              className="h-11 rounded-2xl border border-neutral-200 bg-white px-4 text-sm text-neutral-700 outline-none focus:border-neutral-900"
+          <div className="flex w-full flex-col gap-3 md:w-auto md:items-end">
+            <button
+              type="button"
+              onClick={onSignOut}
+              className="h-10 rounded-2xl border border-neutral-300 px-4 text-sm font-medium text-neutral-700 transition hover:border-neutral-900 hover:text-neutral-900"
             >
-              {countries.map((c) => (
-                <option key={c.code || 'all'} value={c.code}>
-                  {c.flag} {c.name}
-                </option>
-              ))}
-            </select>
+              Sign out
+            </button>
+            <div className="grid w-full gap-3 md:w-auto md:grid-cols-[1.2fr_220px]">
+              <input
+                placeholder="Search name or @username"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="h-11 rounded-2xl border border-neutral-200 bg-white px-4 text-sm outline-none ring-0 placeholder:text-neutral-400 focus:border-neutral-900"
+              />
+              <select
+                value={country}
+                onChange={(e) => setCountry(e.target.value)}
+                className="h-11 rounded-2xl border border-neutral-200 bg-white px-4 text-sm text-neutral-700 outline-none focus:border-neutral-900"
+              >
+                {countries.map((c) => (
+                  <option key={c.code || 'all'} value={c.code}>
+                    {c.flag} {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
+
+        {error ? <p className="text-sm text-red-600">{error}</p> : null}
 
         {loading ? (
           <p className="text-sm text-neutral-500">Loading...</p>
