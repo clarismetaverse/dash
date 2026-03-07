@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 type Creator = {
   id: number | string;
@@ -8,7 +8,37 @@ type Creator = {
   flag?: string;
 };
 
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://your-backend.com';
+type XanoCreator = {
+  id?: number | string;
+  full_name?: string;
+  name?: string;
+  username?: string;
+  handle?: string;
+  nationality?: string;
+  country_code?: string;
+  country?: string;
+};
+
+const XANO_SEARCH_ENDPOINT =
+  process.env.REACT_APP_XANO_INFLUENCER_SEARCH_ENDPOINT ||
+  'https://xbut-eryu-hhsg.f2.xano.io/workspace/1-0/api/32/query/1812';
+
+const VIC_AUTH_TOKEN =
+  process.env.REACT_APP_VIC_AUTH_TOKEN ||
+  'eyJhbGciOiJBMjU2S1ciLCJlbmMiOiJBMjU2Q0JDLUhTNTEyIiwiemlwIjoiREVGIn0.Emw8jRfiVQu2NeyztJmzltPxi2OYNZEO_yzd6wmylnfCGL4nP49xleyo8hdudnlVYzG-j1mQXluAo7cMa5bLCxJcdwoZIup5.zpLAka13aA4FYioz0Hfezw.LUVA0iCOcg6CWALVh1bRSlkssfttnK9Vp-AT7fv1V7zpP-5WoqA6Bj5OFpDTuxsrsbi6ZeXvK2gs0Lh-YIkj2wYAPwRqmTxv-SDZUKv4rhn7yuRd0bTKSeaRef-O6LIMPtBpvNDa7U6D3EpjrDtADQ.NBp5rEDoc6R2PvPrSik6buXy-Om2rvF1eLe0PnXqXbI';
+
+function normalizeCreator(creator: XanoCreator): Creator {
+  const name = creator.full_name || creator.name || creator.username || 'Unknown creator';
+  const username = creator.username || creator.handle || '';
+  const nationality = creator.nationality || creator.country_code || creator.country || '';
+
+  return {
+    id: creator.id || `${name}-${username}`,
+    name,
+    username: username.startsWith('@') || username.length === 0 ? username : `@${username}`,
+    nationality
+  };
+}
 
 export default function InfluencerDiscoveryPage() {
   const countries = [
@@ -26,25 +56,53 @@ export default function InfluencerDiscoveryPage() {
   const [country, setCountry] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const trimmedSearch = useMemo(() => search.trim(), [search]);
+
   useEffect(() => {
+    const controller = new AbortController();
+
     async function fetchCreators() {
       setLoading(true);
       try {
-        const query = new URLSearchParams({ username: search, nationality: country });
-        const res = await fetch(`${API_BASE_URL}/users?${query.toString()}`);
-        if (!res.ok) throw new Error('Failed to fetch users');
-        const data: Creator[] = await res.json();
-        setCreators(data);
+        const res = await fetch(XANO_SEARCH_ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${VIC_AUTH_TOKEN}`
+          },
+          body: JSON.stringify({
+            q: trimmedSearch,
+            user_interest_topics_turbo_id: [],
+            nationality: country
+          }),
+          signal: controller.signal
+        });
+
+        if (!res.ok) {
+          throw new Error('Failed to fetch creators');
+        }
+
+        const data = await res.json();
+        const creatorsList = Array.isArray(data) ? data : [];
+        setCreators(creatorsList.map((creator) => normalizeCreator(creator)));
       } catch (err) {
-        console.error(err);
-        setCreators([]);
+        if ((err as Error).name !== 'AbortError') {
+          console.error(err);
+          setCreators([]);
+        }
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     }
 
     fetchCreators();
-  }, [search, country]);
+
+    return () => {
+      controller.abort();
+    };
+  }, [trimmedSearch, country]);
 
   return (
     <div className="min-h-screen bg-neutral-50 p-6 md:p-10">
@@ -79,6 +137,8 @@ export default function InfluencerDiscoveryPage() {
 
         {loading ? (
           <p className="text-sm text-neutral-500">Loading...</p>
+        ) : creators.length === 0 ? (
+          <p className="text-sm text-neutral-500">No creators found for the current filters.</p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {creators.map((creator) => (
@@ -100,7 +160,7 @@ export default function InfluencerDiscoveryPage() {
                     <p className="text-sm text-neutral-500">{creator.username}</p>
                     <p className="mt-2 text-sm text-neutral-700">
                       {creator.flag || countries.find((c) => c.code === creator.nationality)?.flag || '🌍'}{' '}
-                      {countries.find((c) => c.code === creator.nationality)?.name || creator.nationality}
+                      {countries.find((c) => c.code === creator.nationality)?.name || creator.nationality || 'Unknown'}
                     </p>
                   </div>
                 </div>
