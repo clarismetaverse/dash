@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 
 const STORAGE_TOKEN_KEY = 'xano_jwt_token';
 const XANO_BASE_URL = 'https://xbut-eryu-hhsg.f2.xano.io/api:vGd6XDW3';
+const XANO_LOGIN_PATH = '/auth/login';
 
 export class AuthError extends Error {
   constructor(message: string) {
@@ -26,7 +27,7 @@ export function useAuth() {
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const response = await fetch(`${XANO_BASE_URL}/user_login_Upgrade`, {
+    const response = await fetch(`${XANO_BASE_URL}${XANO_LOGIN_PATH}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
