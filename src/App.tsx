@@ -35,13 +35,33 @@ function SignInPage({ onSignIn }: { onSignIn: (token: string) => void }) {
         })
       });
 
-      const data = await response.json();
+      const rawBody = await response.text();
+      let data: any = null;
 
-      if (!response.ok) {
-        throw new Error(data?.message || data?.error || 'Invalid email or password.');
+      if (rawBody) {
+        try {
+          data = JSON.parse(rawBody);
+        } catch {
+          data = rawBody;
+        }
       }
 
-      const token = data?.authToken || data?.auth_token || data?.token || data?.access_token;
+      if (!response.ok) {
+        throw new Error(
+          (typeof data === 'object' && (data?.message || data?.error)) ||
+            (typeof data === 'string' && data) ||
+            'Invalid email or password.'
+        );
+      }
+
+      const token =
+        (typeof data === 'string' ? data : null) ||
+        data?.authToken ||
+        data?.auth_token ||
+        data?.token ||
+        data?.access_token ||
+        data?.auth?.token ||
+        data?.data?.auth_token;
 
       if (!token || typeof token !== 'string') {
         throw new Error('Sign-in succeeded but no auth token was returned.');
