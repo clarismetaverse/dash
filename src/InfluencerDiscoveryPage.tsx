@@ -63,6 +63,10 @@ export default function InfluencerDiscoveryPage({
 
   const trimmedSearch = useMemo(() => search.trim(), [search]);
 
+  const authorizationHeader = authToken.toLowerCase().startsWith('bearer ')
+    ? authToken
+    : `Bearer ${authToken}`;
+
   useEffect(() => {
     const controller = new AbortController();
 
@@ -74,7 +78,7 @@ export default function InfluencerDiscoveryPage({
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            Authorization: authToken
+            Authorization: authorizationHeader
           },
           body: JSON.stringify({
             q: trimmedSearch,
@@ -112,7 +116,7 @@ export default function InfluencerDiscoveryPage({
     return () => {
       controller.abort();
     };
-  }, [trimmedSearch, country, authToken]);
+  }, [trimmedSearch, country, authorizationHeader]);
 
   return (
     <div className="min-h-screen bg-neutral-50 p-6 md:p-10">
