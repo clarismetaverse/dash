@@ -1,122 +1,83 @@
-import { useEffect, useMemo, useState } from 'react';
-import { AuthError } from './useAuth';
+// file: InfluencerDiscoveryPage.tsx
+import { useState, useEffect } from "react";
 
-type Creator = {
-  id: number | string;
-  name: string;
-  bio: string;
-  profilePicUrl: string;
-  instagramUrl: string;
-  tiktokUrl: string;
-};
-
-type XanoCreator = {
-  id?: number | string;
-  name?: string;
-  bio?: string;
-  IG_account?: string;
-  Tiktok_account?: string;
-  Profile_pic?: {
-    url?: string;
-  };
-};
-
-const XANO_SEARCH_ENDPOINT =
-  process.env.REACT_APP_XANO_INFLUENCER_SEARCH_ENDPOINT ||
-  'https://xbut-eryu-hhsg.f2.xano.io/api:vGd6XDW3/search/user_turbo/dash';
-
-function normalizeCreator(creator: XanoCreator): Creator {
-  const name = creator.name || 'Unknown creator';
-
-  return {
-    id: creator.id || name,
-    name,
-    bio: creator.bio || '',
-    instagramUrl: creator.IG_account || '',
-    tiktokUrl: creator.Tiktok_account || '',
-    profilePicUrl: creator.Profile_pic?.url || ''
-  };
-}
-
-export default function InfluencerDiscoveryPage({
-  authenticatedFetch,
-  onSignOut
-}: {
-  authenticatedFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-  onSignOut: () => void;
-}) {
+export default function InfluencerDiscoveryPage() {
   const countries = [
-    { code: '', name: 'All countries', flag: '🌍' },
-    { code: 'US', name: 'United States', flag: '🇺🇸' },
-    { code: 'AU', name: 'Australia', flag: '🇦🇺' },
-    { code: 'IT', name: 'Italy', flag: '🇮🇹' },
-    { code: 'GB', name: 'United Kingdom', flag: '🇬🇧' },
-    { code: 'ES', name: 'Spain', flag: '🇪🇸' },
-    { code: 'FR', name: 'France', flag: '🇫🇷' },
-    { code: 'DE', name: 'Germany', flag: '🇩🇪' }
+    { code: "", name: "All countries", flag: "🌍" },
+    { code: "US", name: "United States", flag: "🇺🇸" },
+    { code: "IT", name: "Italy", flag: "🇮🇹" },
+    { code: "GB", name: "United Kingdom", flag: "🇬🇧" },
+    { code: "ES", name: "Spain", flag: "🇪🇸" },
+    { code: "FR", name: "France", flag: "🇫🇷" },
+    { code: "DE", name: "Germany", flag: "🇩🇪" },
   ];
 
-  const [creators, setCreators] = useState<Creator[]>([]);
-  const [search, setSearch] = useState('');
-  const [country, setCountry] = useState('');
+  const [creators, setCreators] = useState<any[]>([]);
+  const [search, setSearch] = useState("");
+  const [country, setCountry] = useState("");
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
 
-  const trimmedSearch = useMemo(() => search.trim(), [search]);
+  // 🔑 1. Login function
+  async function login() {
+    try {
+      const res = await fetch("https://xano-backend.com/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: "your-email@example.com",
+          password: "your-password",
+        }),
+      });
 
-  useEffect(() => {
-    const controller = new AbortController();
-
-    async function fetchCreators() {
-      setLoading(true);
-      setError('');
-      try {
-        const res = await authenticatedFetch(XANO_SEARCH_ENDPOINT, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            q: trimmedSearch,
-            user_interest_topics_turbo_id: [],
-            nationality: country
-          }),
-          signal: controller.signal
-        });
-
-        if (!res.ok) {
-          throw new Error('Failed to fetch creators');
-        }
-
-        const data = await res.json();
-        const creatorsList = Array.isArray(data) ? data : [];
-        setCreators(creatorsList.map((creator) => normalizeCreator(creator)));
-      } catch (err) {
-        if ((err as Error).name !== 'AbortError') {
-          const message = (err as Error).message || 'Unable to load creators right now.';
-          setError(message);
-          setCreators([]);
-          if (err instanceof AuthError) {
-            onSignOut();
-          }
-        }
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false);
-        }
-      }
+      if (!res.ok) throw new Error("Login failed");
+      const data = await res.json();
+      setToken(data.token);
+      localStorage.setItem("authToken", data.token);
+    } catch (err) {
+      console.error(err);
     }
+  }
 
-    fetchCreators();
+  // 🔑 2. Fetch creators using token
+  async function fetchCreators() {
+    if (!token) return; // wait for token
+    setLoading(true);
+    try {
+      const query = new URLSearchParams({ username: search, nationality: country });
+      const res = await fetch(`https://xano-backend.com/users?${query}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error("Failed to fetch users");
+      const data = await res.json();
+      setCreators(data);
+    } catch (err) {
+      console.error(err);
+      setCreators([]);
+    } finally {
+      setLoading(false);
+    }
+  }
 
-    return () => {
-      controller.abort();
-    };
-  }, [trimmedSearch, country, authenticatedFetch, onSignOut]);
+  // 🔑 3. Login on component mount
+  useEffect(() => {
+    const savedToken = localStorage.getItem("authToken");
+    if (savedToken) {
+      setToken(savedToken);
+    } else {
+      login();
+    }
+  }, []);
+
+  // 🔑 4. Fetch creators whenever token, search, or country changes
+  useEffect(() => {
+    if (token) fetchCreators();
+  }, [token, search, country]);
 
   return (
     <div className="min-h-screen bg-neutral-50 p-6 md:p-10">
       <div className="mx-auto max-w-7xl space-y-6">
+        {/* Header */}
         <div className="flex flex-col gap-3 rounded-3xl bg-white p-6 shadow-sm ring-1 ring-black/5 md:flex-row md:items-end md:justify-between">
           <div>
             <p className="text-sm font-medium text-neutral-500">Discovery</p>
@@ -124,102 +85,30 @@ export default function InfluencerDiscoveryPage({
             <p className="mt-1 text-sm text-neutral-500">Search creators by name, username and nationality.</p>
           </div>
 
-          <div className="flex w-full flex-col gap-3 md:w-auto md:items-end">
-            <button
-              type="button"
-              onClick={onSignOut}
-              className="h-10 rounded-2xl border border-neutral-300 px-4 text-sm font-medium text-neutral-700 transition hover:border-neutral-900 hover:text-neutral-900"
+          <div className="grid w-full gap-3 md:w-auto md:grid-cols-[1.2fr_220px]">
+            <input
+              placeholder="Search name or @username"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="h-11 rounded-2xl border border-neutral-200 bg-white px-4 text-sm outline-none ring-0 placeholder:text-neutral-400 focus:border-neutral-900"
+            />
+            <select
+              value={country}
+              onChange={(e) => setCountry(e.target.value)}
+              className="h-11 rounded-2xl border border-neutral-200 bg-white px-4 text-sm text-neutral-700 outline-none focus:border-neutral-900"
             >
-              Sign out
-            </button>
-            <div className="grid w-full gap-3 md:w-auto md:grid-cols-[1.2fr_220px]">
-              <input
-                placeholder="Search name or @username"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-11 rounded-2xl border border-neutral-200 bg-white px-4 text-sm outline-none ring-0 placeholder:text-neutral-400 focus:border-neutral-900"
-              />
-              <select
-                value={country}
-                onChange={(e) => setCountry(e.target.value)}
-                className="h-11 rounded-2xl border border-neutral-200 bg-white px-4 text-sm text-neutral-700 outline-none focus:border-neutral-900"
-              >
-                {countries.map((c) => (
-                  <option key={c.code || 'all'} value={c.code}>
-                    {c.flag} {c.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+              {countries.map((c) => (
+                <option key={c.code || "all"} value={c.code}>
+                  {c.flag} {c.name}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
 
-        {error ? <p className="text-sm text-red-600">{error}</p> : null}
-
+        {/* Results */}
         {loading ? (
-          <p className="text-sm text-neutral-500">Loading...</p>
-        ) : creators.length === 0 ? (
-          <p className="text-sm text-neutral-500">No creators found for the current filters.</p>
+          <p>Loading...</p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {creators.map((creator) => (
-              <div
-                key={creator.id}
-                className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-black/5 transition hover:-translate-y-0.5 hover:shadow-md"
-              >
-                <div className="flex items-start gap-4">
-                  {creator.profilePicUrl ? (
-                    <img
-                      src={creator.profilePicUrl}
-                      alt={creator.name}
-                      className="h-14 w-14 rounded-2xl object-cover"
-                      loading="lazy"
-                    />
-                  ) : (
-                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-neutral-100 text-lg font-semibold text-neutral-600">
-                      {creator.name
-                        .split(' ')
-                        .map((part: string) => part[0])
-                        .join('')}
-                    </div>
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <h2 className="truncate text-base font-semibold text-neutral-900">{creator.name}</h2>
-                    </div>
-                    <p className="mt-1 text-sm text-neutral-600">{creator.bio || 'No bio provided.'}</p>
-                    <div className="mt-2 flex flex-wrap gap-3 text-sm">
-                      {creator.instagramUrl ? (
-                        <a
-                          href={creator.instagramUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-medium text-neutral-700 underline-offset-2 hover:underline"
-                        >
-                          Instagram
-                        </a>
-                      ) : null}
-                      {creator.tiktokUrl ? (
-                        <a
-                          href={creator.tiktokUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="font-medium text-neutral-700 underline-offset-2 hover:underline"
-                        >
-                          TikTok
-                        </a>
-                      ) : null}
-                      {!creator.instagramUrl && !creator.tiktokUrl ? (
-                        <span className="text-neutral-500">No social linked</span>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+            {creators
