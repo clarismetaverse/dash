@@ -1,24 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
-const AUTH_TOKEN_STORAGE_KEY = 'vic_auth_token';
-const XANO_AUTH_ENDPOINT =
-  process.env.REACT_APP_XANO_AUTH_ENDPOINT ||
-  'https://xbut-eryu-hhsg.f2.xano.io/api:vGd6XDW3/auth_vic_login';
-
-type LoginResponse = {
-  authToken?: string;
-  auth_token?: string;
-  token?: string;
-  access_token?: string;
-  auth?: {
-    token?: string;
-  };
-  data?: {
-    auth_token?: string;
-  };
-  message?: string;
-  error?: string;
-};
+const STORAGE_TOKEN_KEY = 'xano_jwt_token';
+const XANO_BASE_URL = 'https://xbut-eryu-hhsg.f2.xano.io/api:vGd6XDW3';
 
 export class AuthError extends Error {
   constructor(message: string) {
@@ -27,108 +10,67 @@ export class AuthError extends Error {
   }
 }
 
-function extractToken(data: unknown): string | null {
-  if (typeof data === 'string') {
-    return data;
-  }
-
-  if (!data || typeof data !== 'object') {
-    return null;
-  }
-
-  const payload = data as LoginResponse;
-  return (
-    payload.authToken ||
-    payload.auth_token ||
-    payload.token ||
-    payload.access_token ||
-    payload.auth?.token ||
-    payload.data?.auth_token ||
-    null
-  );
-}
+type LoginPayload = {
+  token?: string;
+};
 
 export function useAuth() {
-  const [authToken, setAuthToken] = useState(() => localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '');
+  const [token, setToken] = useState<string>(() => localStorage.getItem(STORAGE_TOKEN_KEY) ?? '');
+
+  const isAuthenticated = useMemo(() => Boolean(token), [token]);
 
   const signOut = useCallback(() => {
-    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-    setAuthToken('');
+    localStorage.removeItem(STORAGE_TOKEN_KEY);
+    setToken('');
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    const response = await fetch(XANO_AUTH_ENDPOINT, {
+    const response = await fetch(`${XANO_BASE_URL}/user_login_Upgrade`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        email,
-        password
-      })
+      body: JSON.stringify({ email, password })
     });
 
-    const rawBody = await response.text();
-    let data: unknown = null;
+    const data = (await response.json()) as LoginPayload;
 
-    if (rawBody) {
-      try {
-        data = JSON.parse(rawBody);
-      } catch {
-        data = rawBody;
-      }
+    if (!response.ok || !data.token) {
+      const fallback = response.status === 401 || response.status === 403 ? 'Invalid credentials.' : 'Login failed.';
+      throw new AuthError(fallback);
     }
 
-    if (!response.ok) {
-      const message =
-        (typeof data === 'object' && data && ('message' in data || 'error' in data)
-          ? ((data as LoginResponse).message || (data as LoginResponse).error)
-          : null) ||
-        (typeof data === 'string' ? data : null) ||
-        'Invalid email or password.';
-      throw new Error(message);
-    }
-
-    const token = extractToken(data);
-
-    if (!token) {
-      throw new Error('Sign-in succeeded but no auth token was returned.');
-    }
-
-    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
-    setAuthToken(token);
-    return token;
+    localStorage.setItem(STORAGE_TOKEN_KEY, data.token);
+    setToken(data.token);
   }, []);
 
   const authenticatedFetch = useCallback(
-    async (input: RequestInfo | URL, init: RequestInit = {}) => {
-      if (!authToken) {
-        throw new AuthError('Please sign in to continue.');
+    async (path: string, init?: RequestInit) => {
+      if (!token) {
+        throw new AuthError('Missing auth token. Please sign in.');
       }
 
-      const headers = new Headers(init.headers || {});
-      if (!headers.has('Authorization')) {
-        const authorizationHeader = authToken.toLowerCase().startsWith('bearer ') ? authToken : `Bearer ${authToken}`;
-        headers.set('Authorization', authorizationHeader);
-      }
+      const headers = new Headers(init?.headers ?? {});
+      headers.set('Authorization', `Bearer ${token}`);
 
-      const response = await fetch(input, {
+      const response = await fetch(`${XANO_BASE_URL}${path}`, {
         ...init,
         headers
       });
 
       if (response.status === 401 || response.status === 403) {
         signOut();
-        throw new AuthError('Your session expired. Please sign in again.');
+        throw new AuthError('Session expired. Please sign in again.');
       }
 
       return response;
     },
-    [authToken, signOut]
+    [signOut, token]
   );
 
   return {
-    authToken,
+    token,
+    isAuthenticated,
     login,
     signOut,
     authenticatedFetch
