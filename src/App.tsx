@@ -4,7 +4,7 @@ import InfluencerDiscoveryPage from './InfluencerDiscoveryPage';
 const AUTH_TOKEN_STORAGE_KEY = 'vic_auth_token';
 const XANO_AUTH_ENDPOINT =
   process.env.REACT_APP_XANO_AUTH_ENDPOINT ||
-  'https://xbut-eryu-hhsg.f2.xano.io/api:vGd6XDW3/auth/login';
+  'https://xbut-eryu-hhsg.f2.xano.io/api:vGd6XDW3/auth_vic_login';
 
 function SignInPage({ onSignIn }: { onSignIn: (token: string) => void }) {
   const [email, setEmail] = useState('');
@@ -35,11 +35,12 @@ function SignInPage({ onSignIn }: { onSignIn: (token: string) => void }) {
         })
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error('Invalid email or password.');
+        throw new Error(data?.message || data?.error || 'Invalid email or password.');
       }
 
-      const data = await response.json();
       const token = data?.authToken || data?.auth_token || data?.token || data?.access_token;
 
       if (!token || typeof token !== 'string') {
