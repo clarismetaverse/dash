@@ -12,6 +12,7 @@ export class AuthError extends Error {
 
 type LoginPayload = {
   token?: string;
+  authToken?: string;
 };
 
 export function useAuth() {
@@ -33,15 +34,16 @@ export function useAuth() {
       body: JSON.stringify({ email, password })
     });
 
-    const data = (await response.json()) as LoginPayload;
+    const data = (await response.json().catch(() => ({}))) as LoginPayload;
+    const jwtToken = data.token ?? data.authToken;
 
-    if (!response.ok || !data.token) {
-      const fallback = response.status === 401 || response.status === 403 ? 'Invalid credentials.' : 'Login failed.';
+    if (!response.ok || !jwtToken) {
+      const fallback = response.status === 401 || response.status === 403 ? 'Invalid credentials or blocked origin (check Xano CORS Allowed Origins).' : 'Login failed.';
       throw new AuthError(fallback);
     }
 
-    localStorage.setItem(STORAGE_TOKEN_KEY, data.token);
-    setToken(data.token);
+    localStorage.setItem(STORAGE_TOKEN_KEY, jwtToken);
+    setToken(jwtToken);
   }, []);
 
   const authenticatedFetch = useCallback(
