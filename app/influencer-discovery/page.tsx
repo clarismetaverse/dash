@@ -20,6 +20,7 @@ type CreatorCard = {
   hasEmail: boolean;
   hasPhone: boolean;
   bio: string;
+  bioHtml: string;
   hq: string;
 };
 
@@ -48,6 +49,15 @@ function getPlatforms(value: unknown): string[] {
     return value.map((item) => String(item)).filter(Boolean);
   }
   return [];
+}
+
+function getFirstString(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value;
+    }
+  }
+  return "";
 }
 
 function mapCreator(item: ApiCreator, index: number): CreatorCard {
@@ -80,7 +90,8 @@ function mapCreator(item: ApiCreator, index: number): CreatorCard {
     platforms: getPlatforms(item.platforms || item.social_platforms),
     hasEmail: Boolean(item.email),
     hasPhone: Boolean(item.phone),
-    bio: getString(item.bio) || getString(item.description) || "No bio available",
+    bio: getFirstString(item.bio, item.description, "No bio available"),
+    bioHtml: getFirstString(item.bio_html, item.description_html),
     hq: getString(item.hq) || getString(item.location) || "Unknown",
   };
 }
@@ -210,7 +221,11 @@ export default function InfluencerDiscoveryPage() {
         </div>
 
         <div className="mt-4 space-y-2 text-sm text-neutral-600">
-          <p>{creator.bio}</p>
+          {creator.bioHtml ? (
+            <p dangerouslySetInnerHTML={{ __html: creator.bioHtml }} />
+          ) : (
+            <p>{creator.bio}</p>
+          )}
           <p>HQ: {creator.hq}</p>
         </div>
 
