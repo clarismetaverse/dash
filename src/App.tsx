@@ -1,12 +1,8 @@
 import { FormEvent, useState } from 'react';
 import InfluencerDiscoveryPage from './InfluencerDiscoveryPage';
+import { useAuth } from './useAuth';
 
-const AUTH_TOKEN_STORAGE_KEY = 'vic_auth_token';
-const XANO_AUTH_ENDPOINT =
-  process.env.REACT_APP_XANO_AUTH_ENDPOINT ||
-  'https://xbut-eryu-hhsg.f2.xano.io/api:vGd6XDW3/auth_vic_login';
-
-function SignInPage({ onSignIn }: { onSignIn: (token: string) => void }) {
+function SignInPage({ onSignIn }: { onSignIn: (email: string, password: string) => Promise<void> }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -24,50 +20,7 @@ function SignInPage({ onSignIn }: { onSignIn: (token: string) => void }) {
     setError('');
 
     try {
-      const response = await fetch(XANO_AUTH_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          email: trimmedEmail,
-          password
-        })
-      });
-
-      const rawBody = await response.text();
-      let data: any = null;
-
-      if (rawBody) {
-        try {
-          data = JSON.parse(rawBody);
-        } catch {
-          data = rawBody;
-        }
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          (typeof data === 'object' && (data?.message || data?.error)) ||
-            (typeof data === 'string' && data) ||
-            'Invalid email or password.'
-        );
-      }
-
-      const token =
-        (typeof data === 'string' ? data : null) ||
-        data?.authToken ||
-        data?.auth_token ||
-        data?.token ||
-        data?.access_token ||
-        data?.auth?.token ||
-        data?.data?.auth_token;
-
-      if (!token || typeof token !== 'string') {
-        throw new Error('Sign-in succeeded but no auth token was returned.');
-      }
-
-      onSignIn(token);
+      await onSignIn(trimmedEmail, password);
     } catch (err) {
       setError((err as Error).message || 'Unable to sign in right now.');
     } finally {
@@ -122,21 +75,15 @@ function SignInPage({ onSignIn }: { onSignIn: (token: string) => void }) {
 }
 
 export default function App() {
-  const [authToken, setAuthToken] = useState(() => localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '');
+  const { authToken, login, signOut, authenticatedFetch } = useAuth();
 
-  function handleSignIn(token: string) {
-    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
-    setAuthToken(token);
-  }
-
-  function handleSignOut() {
-    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
-    setAuthToken('');
+  async function handleSignIn(email: string, password: string) {
+    await login(email, password);
   }
 
   if (!authToken) {
     return <SignInPage onSignIn={handleSignIn} />;
   }
 
-  return <InfluencerDiscoveryPage authToken={authToken} onSignOut={handleSignOut} />;
+  return <InfluencerDiscoveryPage authenticatedFetch={authenticatedFetch} onSignOut={signOut} />;
 }

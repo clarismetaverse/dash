@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { AuthError } from './useAuth';
 
 type Creator = {
   id: number | string;
@@ -38,10 +39,10 @@ function normalizeCreator(creator: XanoCreator): Creator {
 }
 
 export default function InfluencerDiscoveryPage({
-  authToken,
+  authenticatedFetch,
   onSignOut
 }: {
-  authToken: string;
+  authenticatedFetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
   onSignOut: () => void;
 }) {
   const countries = [
@@ -63,10 +64,6 @@ export default function InfluencerDiscoveryPage({
 
   const trimmedSearch = useMemo(() => search.trim(), [search]);
 
-  const authorizationHeader = authToken.toLowerCase().startsWith('bearer ')
-    ? authToken
-    : `Bearer ${authToken}`;
-
   useEffect(() => {
     const controller = new AbortController();
 
@@ -74,11 +71,10 @@ export default function InfluencerDiscoveryPage({
       setLoading(true);
       setError('');
       try {
-        const res = await fetch(XANO_SEARCH_ENDPOINT, {
+        const res = await authenticatedFetch(XANO_SEARCH_ENDPOINT, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            Authorization: authorizationHeader
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({
             q: trimmedSearch,
@@ -89,9 +85,6 @@ export default function InfluencerDiscoveryPage({
         });
 
         if (!res.ok) {
-          if (res.status === 401 || res.status === 403) {
-            throw new Error('Your token is invalid or expired. Please sign in again.');
-          }
           throw new Error('Failed to fetch creators');
         }
 
@@ -103,6 +96,9 @@ export default function InfluencerDiscoveryPage({
           const message = (err as Error).message || 'Unable to load creators right now.';
           setError(message);
           setCreators([]);
+          if (err instanceof AuthError) {
+            onSignOut();
+          }
         }
       } finally {
         if (!controller.signal.aborted) {
@@ -116,7 +112,7 @@ export default function InfluencerDiscoveryPage({
     return () => {
       controller.abort();
     };
-  }, [trimmedSearch, country, authorizationHeader]);
+  }, [trimmedSearch, country, authenticatedFetch, onSignOut]);
 
   return (
     <div className="min-h-screen bg-neutral-50 p-6 md:p-10">
